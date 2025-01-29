@@ -1,243 +1,143 @@
-let ws = null
-let hasControl = false
-const canvas = document.getElementById("remoteScreen")
-const ctx = canvas.getContext("2d")
-let serverWidth = 0
-let serverHeight = 0
-const pressedKeys = new Set()
-
-// Import pako library.  This assumes pako is available via a script tag or a module import.
-// Adjust as needed for your project setup.  For example, if using a module bundler like Webpack or Parcel:
-// import pako from 'pako';
+let ws = null;
+let hasControl = false;
+const canvas = document.getElementById("remoteScreen");
+const ctx = canvas.getContext("2d");
+let serverWidth = 0;
+let serverHeight = 0;
+const pressedKeys = new Set();
 
 function connect() {
-  ws = new WebSocket(`ws://${window.location.hostname}:8080`)
-  ws.binaryType = "arraybuffer"
+    ws = new WebSocket(`ws://${window.location.hostname}:8080`);
+    ws.binaryType = "arraybuffer";
 
-  ws.onopen = () => {
-    console.log("Connected to server")
-    setupInputHandlers()
-  }
+    ws.onopen = () => {
+        console.log("Connected to server");
+        setupInputHandlers();
+    };
 
-  ws.onmessage = async (event) => {
-    if (typeof event.data === "string") {
-      const data = JSON.parse(event.data)
-      if (data.type === "resolution") {
-        serverWidth = data.width
-        serverHeight = data.height
-        updateCanvasSize(data.width, data.height)
+    ws.onmessage = async (event) => {
+      if (typeof event.data === "string") {
+          // Handle resolution message
+          const data = JSON.parse(event.data);
+          if (data.type === "resolution") {
+              serverWidth = data.width;
+              serverHeight = data.height;
+              updateCanvasSize(data.width, data.height);
+          }
+      } else {
+          // Handle binary frame data
+          try {
+              const frameData = new Uint8Array(event.data);
+              const decompressed = pako.inflate(frameData);
+              const blob = new Blob([decompressed], { type: "image/jpeg" });
+              const img = await createImageBitmap(blob);
+              ctx.clearRect(0, 0, canvas.width, canvas.height);
+              ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          } catch (error) {
+              console.error("Frame processing error:", error);
+          }
       }
-    } else {
-      try {
-        const frameData = new Uint8Array(event.data)
-        const decompressed = pako.inflate(frameData) // pako is now used here
-        const blob = new Blob([decompressed], { type: "image/jpeg" })
-        const img = await createImageBitmap(blob)
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-      } catch (error) {
-        console.error("Error rendering frame:", error)
-      }
-    }
-  }
+  };
 
-  ws.onclose = () => {
-    console.log("Connection closed, reconnecting...")
-    setTimeout(connect, 3000)
-  }
+    ws.onclose = () => {
+        console.log("Connection closed, reconnecting...");
+        setTimeout(connect, 3000);
+    };
 }
 
-function updateCanvasSize(serverWidth, serverHeight) {
-  const maxWidth = window.innerWidth - 40
-  const maxHeight = window.innerHeight - 100
-  const aspect = serverWidth / serverHeight
+function updateCanvasSize(width, height) {
+    const maxWidth = window.innerWidth - 40;
+    const maxHeight = window.innerHeight - 100;
+    const aspect = width / height;
 
-  let width = Math.min(serverWidth, maxWidth)
-  let height = width / aspect
+    let newWidth = Math.min(width, maxWidth);
+    let newHeight = newWidth / aspect;
 
-  if (height > maxHeight) {
-    height = maxHeight
-    width = height * aspect
-  }
+    if (newHeight > maxHeight) {
+        newHeight = maxHeight;
+        newWidth = newHeight * aspect;
+    }
 
-  canvas.width = width
-  canvas.height = height
+    canvas.width = newWidth;
+    canvas.height = newHeight;
 }
 
 function getScaledCoordinates(clientX, clientY) {
-  const rect = canvas.getBoundingClientRect()
-  return {
-    x: Math.round((clientX - rect.left) * (serverWidth / canvas.width)),
-    y: Math.round((clientY - rect.top) * (serverHeight / canvas.height)),
-  }
+    const rect = canvas.getBoundingClientRect();
+    return {
+        x: Math.round((clientX - rect.left) * (serverWidth / canvas.width)),
+        y: Math.round((clientY - rect.top) * (serverHeight / canvas.height))
+    };
 }
 
 function mapSpecialKey(e) {
-  const specialKeys = {
-    Tab: "\t",
-    Enter: "\n",
-    Backspace: "\b",
-    Delete: "<delete>",
-    Escape: "<esc>",
-    ArrowLeft: "<left>",
-    ArrowRight: "<right>",
-    ArrowUp: "<up>",
-    ArrowDown: "<down>",
-    Home: "<home>",
-    End: "<end>",
-    PageUp: "<pageup>",
-    PageDown: "<pagedown>",
-    Insert: "<insert>",
-    Meta: "<windows>",
-    ContextMenu: "<menu>",
-    PrintScreen: "<printscreen>",
-    ScrollLock: "<scrolllock>",
-    Pause: "<pause>",
-    CapsLock: "<capslock>",
-    NumLock: "<numlock>",
-    F1: "<f1>",
-    F2: "<f2>",
-    F3: "<f3>",
-    F4: "<f4>",
-    F5: "<f5>",
-    F6: "<f6>",
-    F7: "<f7>",
-    F8: "<f8>",
-    F9: "<f9>",
-    F10: "<f10>",
-    F11: "<f11>",
-    F12: "<f12>",
-  }
+    const specialMap = {
+        'Tab': '\t', 'Enter': '\n', 'Backspace': '\b',
+        'Escape': '\x1b', 'ArrowLeft': '<left>', 'ArrowRight': '<right>',
+        'ArrowUp': '<up>', 'ArrowDown': '<down>', 'Home': '<home>',
+        'End': '<end>', 'PageUp': '<pageup>', 'PageDown': '<pagedown>'
+    };
 
-  let key = e.key
-  const modifiers = []
+    let key = specialMap[e.key] || e.key;
+    const modifiers = [];
+    if (e.ctrlKey) modifiers.push('ctrl');
+    if (e.altKey) modifiers.push('alt');
+    if (e.shiftKey) modifiers.push('shift');
+    if (e.metaKey) modifiers.push('meta');
 
-  if (e.ctrlKey && key !== "Control") modifiers.push("ctrl")
-  if (e.altKey && key !== "Alt") modifiers.push("alt")
-  if (e.shiftKey && key !== "Shift") modifiers.push("shift")
-  if (e.metaKey && key !== "Meta") modifiers.push("windows")
-
-  if (specialKeys[key]) {
-    key = specialKeys[key]
-  } else if (key.length === 1) {
-    key = e.key;
-  }
-
-  return modifiers.length > 0 ? `<${modifiers.join("+")}+${key}>` : key
+    return modifiers.length > 0 ? `<${modifiers.join('+')}+${key}>` : key;
 }
 
 function setupInputHandlers() {
-  canvas.addEventListener("contextmenu", (e) => e.preventDefault())
+    canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
-  canvas.addEventListener(
-    "mousedown",
-    (e) => {
-      if (!hasControl) return
-      e.preventDefault()
-      const { x, y } = getScaledCoordinates(e.clientX, e.clientY)
-      ws.send(JSON.stringify({ type: "mouse_down", x, y, button: e.button + 1 }))
-    },
-    { passive: false },
-  )
+    const sendEvent = (type, e, extra = {}) => {
+        if (!hasControl) return;
+        e.preventDefault();
+        const { x, y } = getScaledCoordinates(e.clientX, e.clientY);
+        ws.send(JSON.stringify({ type, x, y, ...extra }));
+    };
 
-  canvas.addEventListener(
-    "mouseup",
-    (e) => {
-      if (!hasControl) return
-      e.preventDefault()
-      const { x, y } = getScaledCoordinates(e.clientX, e.clientY)
-      ws.send(JSON.stringify({ type: "mouse_up", x, y, button: e.button + 1 }))
-    },
-    { passive: false },
-  )
+    canvas.addEventListener("mousedown", (e) => 
+        sendEvent("mouse_down", e, { button: e.button + 1 }));
+    canvas.addEventListener("mouseup", (e) => 
+        sendEvent("mouse_up", e, { button: e.button + 1 }));
+    canvas.addEventListener("mousemove", (e) => 
+        sendEvent("mouse_move", e));
+    canvas.addEventListener("wheel", (e) => 
+        sendEvent("mouse_wheel", e, { delta: Math.sign(e.deltaY) * -120 }));
 
-  canvas.addEventListener("mousemove", (e) => {
-    if (!hasControl) return
-    const { x, y } = getScaledCoordinates(e.clientX, e.clientY)
-    ws.send(JSON.stringify({ type: "mouse_move", x, y }))
-  })
+    window.addEventListener("keydown", (e) => {
+        if (!hasControl || pressedKeys.has(e.code)) return;
+        pressedKeys.add(e.code);
+        ws.send(JSON.stringify({ 
+            type: "keyboard", 
+            key: mapSpecialKey(e), 
+            action: "down" 
+        }));
+    });
 
-  canvas.addEventListener(
-    "wheel",
-    (e) => {
-      if (!hasControl) return
-      e.preventDefault()
-      const { x, y } = getScaledCoordinates(e.clientX, e.clientY)
-      ws.send(JSON.stringify({ type: "mouse_wheel", x, y, delta: Math.sign(e.deltaY) * -120 }))
-    },
-    { passive: false },
-  )
+    window.addEventListener("keyup", (e) => {
+        if (!hasControl) return;
+        pressedKeys.delete(e.code);
+        ws.send(JSON.stringify({ 
+            type: "keyboard", 
+            key: mapSpecialKey(e), 
+            action: "up" 
+        }));
+    });
 
-  window.addEventListener(
-    "keydown",
-    (e) => {
-      if (!hasControl) return
-      if (e.target === document.body || e.target === canvas) {
-        e.preventDefault()
-        const keyCode = `${e.code}-${e.key}`
-        if (!pressedKeys.has(keyCode)) {
-          pressedKeys.add(keyCode)
-          ws.send(JSON.stringify({ type: "keyboard", key: mapSpecialKey(e), action: "down" }))
-        }
-      }
-    },
-    true,
-  )
-
-  window.addEventListener(
-    "keyup",
-    (e) => {
-      if (!hasControl) return
-      if (e.target === document.body || e.target === canvas) {
-        e.preventDefault()
-        const keyCode = `${e.code}-${e.key}`
-        pressedKeys.delete(keyCode)
-        ws.send(JSON.stringify({ type: "keyboard", key: mapSpecialKey(e), action: "up" }))
-      }
-    },
-    true,
-  )
-
-  window.addEventListener("blur", () => {
-    pressedKeys.clear()
-  })
-
-  window.addEventListener(
-    "keydown",
-    (e) => {
-      if (hasControl && (e.ctrlKey || e.altKey || e.metaKey)) {
-        e.preventDefault()
-      }
-    },
-    true,
-  )
+    window.addEventListener("blur", () => pressedKeys.clear());
 }
 
 function toggleControl(state) {
-  hasControl = state
-  ws.send(JSON.stringify({ type: "control_state", state }))
-  canvas.style.cursor = state ? "none" : "default"
-  if (state) {
-    canvas.focus()
-  } else {
-    canvas.blur()
-    pressedKeys.clear()
-  }
+    hasControl = state;
+    ws.send(JSON.stringify({ type: "control_state", state }));
+    canvas.style.cursor = state ? "none" : "default";
+    state ? canvas.focus() : canvas.blur();
 }
 
-// Add these functions to handle the Take Control and Release Control buttons
-function takeControl() {
-  toggleControl(true)
-  canvas.focus()
-}
+document.getElementById("takeControl").addEventListener("click", () => toggleControl(true));
+document.getElementById("releaseControl").addEventListener("click", () => toggleControl(false));
 
-function releaseControl() {
-  toggleControl(false)
-  canvas.blur()
-}
-
-connect()
-
-// Make sure to add these event listeners to your Take Control and Release Control buttons
-document.getElementById("takeControlBtn").addEventListener("click", takeControl)
-document.getElementById("releaseControlBtn").addEventListener("click", releaseControl)
-
+connect();
