@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Remote Desktop</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: #1a1a1a;
+            color: white;
+        }
+        #remoteScreen {
+            border: 2px solid #333;
+            margin-top: 20px;
+            background: #000;
+        }
+        .controls {
+            margin-top: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 0 10px;
+            background: #2196F3;
+            border: none;
+            color: white;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background: #1976D2;
+        }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <button id="takeControl" onclick="toggleControl(true)">Take Control</button>
+        <button id="releaseControl" onclick="toggleControl(false)">Release Control</button>
+    </div>
+    <canvas id="remoteScreen"></canvas>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pako/2.1.0/pako.min.js"></script>
+    <script src="client.js"></script>
+</body>
+</html>
