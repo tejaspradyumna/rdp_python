@@ -1,0 +1,7 @@
+# requirements.txt
+mss==9.0.1
+opencv-python==4.9.0.80
+pyautogui==0.9.54
+pynput==1.7.6
+numpy==1.26.4
+zstandard==0.22.0  # Optional but recommended for better compression
