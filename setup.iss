@@ -5,6 +5,8 @@ DefaultDirName={pf}\OfficeMonitor
 PrivilegesRequired=admin
 OutputDir=Output
 OutputBaseFilename=OfficeMonitorSetup
+; Add this to the previous Inno script
+; This installs a Windows service that runs with SYSTEM privileges
 
 [Files]
 ; Assuming your main executable is named OfficeMonitor.exe
@@ -20,6 +22,14 @@ Filename: "netsh.exe"; \
     Parameters: "advfirewall firewall add rule name=""OfficeMonitor"" dir=in action=allow program=""{app}\OfficeMonitor.exe"" enable=yes"; \
     Flags: runhidden; \
     StatusMsg: "Configuring firewall rules..."
+; Install the service during setup
+Filename: "sc.exe"; \
+    Parameters: "create ""OfficeMonitorService"" binPath= ""{app}\OfficeMonitorService.exe"" start= auto"; \
+    Flags: runhidden
+; Start the service
+Filename: "sc.exe"; \
+    Parameters: "start ""OfficeMonitorService"""; \
+    Flags: runhidden
 
 [Registry]
 ; Add registry entry for auto-start
